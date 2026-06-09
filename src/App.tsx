@@ -51,6 +51,19 @@ function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 }
 
+function isBlankStarterNotes(notes: Note[]): boolean {
+  return notes.length === 1
+    && notes[0].title.trim() === "未命名笔记"
+    && notes[0].content.trim() === ""
+    && notes[0].tags.length === 0;
+}
+
+function shouldUseRemoteNotes(remoteNotes: Note[], localNotes: Note[]): boolean {
+  if (remoteNotes.length === 0) return false;
+  if (isBlankStarterNotes(localNotes)) return true;
+  return maxNoteUpdatedAt(remoteNotes) >= maxNoteUpdatedAt(localNotes);
+}
+
 export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeId, setActiveId] = useState("");
@@ -113,7 +126,7 @@ export default function App() {
         setSyncStatus("卜卜账号正在连接");
         try {
           const remote = await loadAccountNotes(storedSession);
-          if (!cancelled && remote.notes.length > 0 && maxNoteUpdatedAt(remote.notes) >= maxNoteUpdatedAt(nextNotes)) {
+          if (!cancelled && shouldUseRemoteNotes(remote.notes, nextNotes)) {
             nextNotes = remote.notes;
             await getApi().saveNotes(nextNotes);
           }
@@ -185,6 +198,10 @@ export default function App() {
   async function handleManualSave() {
     try {
       await getApi().saveNotes(notes);
+      if (accountSessionRef.current) {
+        await saveAccountNotes(accountSessionRef.current, notes);
+        setSyncStatus(`卜卜账号已同步 ${formatTime(Date.now())}`);
+      }
       setSaveStatus(`已保存 ${formatTime(Date.now())}`);
     } catch {
       setSaveStatus("保存失败");
@@ -289,7 +306,7 @@ export default function App() {
       setAccountSession(result.session);
       accountSessionRef.current = result.session;
       const remoteNotes = result.notes ?? [];
-      if (remoteNotes.length > 0 && maxNoteUpdatedAt(remoteNotes) >= maxNoteUpdatedAt(notesRef.current)) {
+      if (shouldUseRemoteNotes(remoteNotes, notesRef.current)) {
         setNotes(remoteNotes);
         notesRef.current = remoteNotes;
         setActiveId(remoteNotes[0].id);
@@ -317,7 +334,7 @@ export default function App() {
     setSyncStatus("卜卜账号正在同步");
     try {
       const remote = await loadAccountNotes(accountSessionRef.current);
-      if (remote.notes.length > 0 && maxNoteUpdatedAt(remote.notes) > maxNoteUpdatedAt(notesRef.current)) {
+      if (remote.notes.length > 0 && (isBlankStarterNotes(notesRef.current) || maxNoteUpdatedAt(remote.notes) > maxNoteUpdatedAt(notesRef.current))) {
         setNotes(remote.notes);
         notesRef.current = remote.notes;
         setActiveId(remote.notes[0].id);

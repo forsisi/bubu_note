@@ -8,6 +8,9 @@ const seedNotes: Note[] = [
   { id: "b", title: "普通笔记", content: "搜索内容", tags: ["工作"], updatedAt: 2 }
 ];
 
+const blankStarterNote: Note = { id: "blank", title: "未命名笔记", content: "", tags: [], updatedAt: 999 };
+const remoteNote: Note = { id: "remote", title: "云端笔记", content: "来自另一台设备", tags: [], updatedAt: 10 };
+
 beforeEach(() => {
   localStorage.clear();
   vi.stubGlobal("fetch", vi.fn());
@@ -152,6 +155,29 @@ describe("App", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "注册" }));
     expect(within(dialog).getByRole("button", { name: "注册并同步" })).toBeInTheDocument();
+  });
+
+  it("pulls remote notes after login when local notes are only the blank starter note", async () => {
+    const user = userEvent.setup();
+    window.bubuNotes!.loadNotes = vi.fn().mockResolvedValue([blankStarterNote]);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({
+      ok: true,
+      session: { username: "bubu", token: "token-1" },
+      notes: [remoteNote],
+      syncedAt: 10
+    }), { status: 200 }));
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "登录" }));
+    await user.type(screen.getByLabelText("账号"), "bubu");
+    await user.type(screen.getByLabelText("密码"), "123456");
+    await user.click(screen.getByRole("button", { name: "登录并同步" }));
+
+    expect(await screen.findByText("云端笔记")).toBeInTheDocument();
+    expect(window.bubuNotes!.saveNotes).toHaveBeenCalledWith([remoteNote]);
+    expect(fetch).toHaveBeenCalledWith("/api/account/login", expect.objectContaining({
+      method: "POST"
+    }));
   });
 
   it("shows a save failure when persistence fails", async () => {
