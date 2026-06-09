@@ -26,7 +26,7 @@ Node.js version: 22
 
 ## WebDAV 同步接口
 
-项目提供 Cloudflare Pages Functions：
+项目保留 WebDAV 代理函数作为兼容能力：
 
 ```text
 functions/api/webdav/[action].js
@@ -42,14 +42,42 @@ functions/api/webdav/[action].js
 
 这些接口负责代理访问坚果云、infiniCloud 等 WebDAV 服务，避免浏览器直接访问 WebDAV 时被 CORS 拦截。
 
-用户需要在应用左侧 WebDAV 模块里填写：
+这些接口目前作为兼容能力保留，后续如果需要恢复高级同步设置，可以复用这些字段：
 
 - WebDAV 地址，例如坚果云 `https://dav.jianguoyun.com/dav`
 - 用户名
 - 密码或应用密码
 - 同步文件路径，默认 `/bubu-notes/notes.json`
 
-登录后会把笔记保存到 WebDAV 文件里，并每 30 秒尝试同步一次。
+新的默认用户入口是下面的“卜卜账号登录同步”。
+
+## 卜卜账号登录同步
+
+左侧同步入口现在显示为“卜卜账号”，用户可以直接注册/登录，不需要理解 WebDAV。
+
+项目提供 Cloudflare Pages Functions：
+
+```text
+functions/api/account/[action].js
+```
+
+部署后会生成同源接口：
+
+```text
+/api/account/register
+/api/account/login
+/api/account/load
+/api/account/save
+```
+
+这些接口需要一个 Cloudflare KV 命名空间保存账号、登录状态和笔记。请在 Cloudflare Pages 项目里绑定 KV：
+
+```text
+Variable name: BUBU_NOTES_KV
+KV namespace: 选择或新建一个命名空间，例如 bubu-notes
+```
+
+如果没有绑定 `BUBU_NOTES_KV`，注册/登录接口会返回“服务器还没有绑定 BUBU_NOTES_KV 数据库”。
 
 ## 绑定域名
 

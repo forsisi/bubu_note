@@ -26,6 +26,29 @@ export interface WebDavResult {
   message?: string;
 }
 
+export interface AccountCredentials {
+  username: string;
+  password: string;
+}
+
+export interface AccountSession {
+  username: string;
+  token: string;
+}
+
+export interface AccountNotesFile {
+  notes: Note[];
+  syncedAt: number;
+}
+
+export interface AccountResult {
+  ok: boolean;
+  session?: AccountSession;
+  notes?: Note[];
+  syncedAt?: number;
+  message?: string;
+}
+
 export interface BubuNotesApi {
   loadNotes(): Promise<Note[]>;
   saveNotes(notes: Note[]): Promise<void>;

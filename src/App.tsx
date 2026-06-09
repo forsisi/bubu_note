@@ -9,16 +9,16 @@ import { createNote, deleteNote, filterNotes, updateNote } from "./lib/notes";
 import { createMarkdownTable, insertMarkdownSnippet, type SnippetKind } from "./lib/snippets";
 import { getNoteStats } from "./lib/stats";
 import {
-  clearStoredWebDavSettings,
-  loadStoredWebDavSettings,
-  loadWebDavNotes,
+  clearStoredAccountSession,
+  loadAccountNotes,
+  loadStoredAccountSession,
+  loginAccount,
   maxNoteUpdatedAt,
-  normalizeWebDavSettings,
-  saveStoredWebDavSettings,
-  saveWebDavNotes,
-  testWebDavConnection
-} from "./lib/webdavSync";
-import type { EditorMode, Note, WebDavSettings } from "./types";
+  registerAccount,
+  saveAccountNotes,
+  saveStoredAccountSession
+} from "./lib/accountSync";
+import type { AccountCredentials, AccountSession, EditorMode, Note } from "./types";
 
 const modeLabels: Record<EditorMode, string> = {
   edit: "编辑模式",
@@ -38,11 +38,9 @@ const markdownTutorial = [
 ];
 
 const fallbackApi = createBrowserNotesApi();
-const emptyWebDavSettings: WebDavSettings = {
-  endpoint: "",
+const emptyAccountForm: AccountCredentials = {
   username: "",
-  password: "",
-  filePath: "/bubu-notes/notes.json"
+  password: ""
 };
 
 function getApi() {
@@ -66,14 +64,15 @@ export default function App() {
   const [tableRows, setTableRows] = useState(3);
   const [tableColumns, setTableColumns] = useState(4);
   const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
-  const [syncSettings, setSyncSettings] = useState<WebDavSettings | null>(() => loadStoredWebDavSettings());
-  const [syncForm, setSyncForm] = useState<WebDavSettings>(() => loadStoredWebDavSettings() ?? emptyWebDavSettings);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [accountSession, setAccountSession] = useState<AccountSession | null>(() => loadStoredAccountSession());
+  const [accountForm, setAccountForm] = useState<AccountCredentials>(emptyAccountForm);
   const [isSyncing, setIsSyncing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const syncingRef = useRef(false);
-  const syncSettingsRef = useRef<WebDavSettings | null>(syncSettings);
+  const accountSessionRef = useRef<AccountSession | null>(accountSession);
   const notesRef = useRef<Note[]>([]);
 
   const activeNote = useMemo(() => notes.find((note) => note.id === activeId) ?? notes[0], [activeId, notes]);
@@ -88,14 +87,14 @@ export default function App() {
     try {
       await getApi().saveNotes(nextNotes);
       setSaveStatus(`已自动保存 ${formatTime(Date.now())}`);
-      if (syncSettingsRef.current) {
-        await saveWebDavNotes(syncSettingsRef.current, nextNotes);
-        setSyncStatus(`WebDAV 已同步 ${formatTime(Date.now())}`);
+      if (accountSessionRef.current) {
+        await saveAccountNotes(accountSessionRef.current, nextNotes);
+        setSyncStatus(`卜卜账号已同步 ${formatTime(Date.now())}`);
       }
     } catch {
       setSaveStatus("保存失败");
-      if (syncSettingsRef.current) {
-        setSyncStatus("WebDAV 同步失败");
+      if (accountSessionRef.current) {
+        setSyncStatus("卜卜账号同步失败");
       }
     }
   }, []);
@@ -106,25 +105,24 @@ export default function App() {
     void getApi().loadNotes().then(async (loadedNotes) => {
       if (cancelled) return;
       let nextNotes = loadedNotes.length > 0 ? loadedNotes : [createNote()];
-      const storedSettings = loadStoredWebDavSettings();
+      const storedSession = loadStoredAccountSession();
 
-      if (storedSettings) {
-        syncSettingsRef.current = storedSettings;
-        setSyncSettings(storedSettings);
-        setSyncForm(storedSettings);
-        setSyncStatus("WebDAV 正在连接");
+      if (storedSession) {
+        accountSessionRef.current = storedSession;
+        setAccountSession(storedSession);
+        setSyncStatus("卜卜账号正在连接");
         try {
-          const remote = await loadWebDavNotes(storedSettings);
+          const remote = await loadAccountNotes(storedSession);
           if (!cancelled && remote.notes.length > 0 && maxNoteUpdatedAt(remote.notes) >= maxNoteUpdatedAt(nextNotes)) {
             nextNotes = remote.notes;
             await getApi().saveNotes(nextNotes);
           }
           if (!cancelled) {
-            setSyncStatus(`WebDAV 已连接 ${formatTime(Date.now())}`);
+            setSyncStatus(`卜卜账号已连接 ${formatTime(Date.now())}`);
           }
         } catch {
           if (!cancelled) {
-            setSyncStatus("WebDAV 连接失败");
+            setSyncStatus("卜卜账号连接失败");
           }
         }
       }
@@ -275,64 +273,71 @@ export default function App() {
     setIsTableDialogOpen(false);
   }
 
-  async function handleConnectWebDav() {
-    const nextSettings = normalizeWebDavSettings(syncForm);
+  async function handleSubmitAccount() {
+    const nextCredentials = {
+      username: accountForm.username.trim(),
+      password: accountForm.password
+    };
     setIsSyncing(true);
-    setSyncStatus("WebDAV 正在登录");
+    setSyncStatus(authMode === "register" ? "正在注册卜卜账号" : "正在登录卜卜账号");
     try {
-      await testWebDavConnection(nextSettings);
-      saveStoredWebDavSettings(nextSettings);
-      setSyncSettings(nextSettings);
-      syncSettingsRef.current = nextSettings;
-      const remote = await loadWebDavNotes(nextSettings);
-      if (remote.notes.length > 0 && maxNoteUpdatedAt(remote.notes) >= maxNoteUpdatedAt(notesRef.current)) {
-        setNotes(remote.notes);
-        notesRef.current = remote.notes;
-        setActiveId(remote.notes[0].id);
-        await getApi().saveNotes(remote.notes);
-      } else {
-        await saveWebDavNotes(nextSettings, notesRef.current);
+      const result = authMode === "register" ? await registerAccount(nextCredentials) : await loginAccount(nextCredentials);
+      if (!result.session) {
+        throw new Error("账号登录失败");
       }
-      setSyncStatus(`WebDAV 已同步 ${formatTime(Date.now())}`);
+      saveStoredAccountSession(result.session);
+      setAccountSession(result.session);
+      accountSessionRef.current = result.session;
+      const remoteNotes = result.notes ?? [];
+      if (remoteNotes.length > 0 && maxNoteUpdatedAt(remoteNotes) >= maxNoteUpdatedAt(notesRef.current)) {
+        setNotes(remoteNotes);
+        notesRef.current = remoteNotes;
+        setActiveId(remoteNotes[0].id);
+        await getApi().saveNotes(remoteNotes);
+      } else {
+        await saveAccountNotes(result.session, notesRef.current);
+      }
+      setSyncStatus(`卜卜账号已同步 ${formatTime(Date.now())}`);
       setIsSyncDialogOpen(false);
-    } catch {
-      setSyncStatus("WebDAV 登录失败");
+      setAccountForm(emptyAccountForm);
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : authMode === "register" ? "卜卜账号注册失败" : "卜卜账号登录失败");
     } finally {
       setIsSyncing(false);
     }
   }
 
   async function handleSyncNow() {
-    if (!syncSettingsRef.current) {
+    if (!accountSessionRef.current) {
       setIsSyncDialogOpen(true);
       return;
     }
 
     setIsSyncing(true);
-    setSyncStatus("WebDAV 正在同步");
+    setSyncStatus("卜卜账号正在同步");
     try {
-      const remote = await loadWebDavNotes(syncSettingsRef.current);
+      const remote = await loadAccountNotes(accountSessionRef.current);
       if (remote.notes.length > 0 && maxNoteUpdatedAt(remote.notes) > maxNoteUpdatedAt(notesRef.current)) {
         setNotes(remote.notes);
         notesRef.current = remote.notes;
         setActiveId(remote.notes[0].id);
         await getApi().saveNotes(remote.notes);
       } else {
-        await saveWebDavNotes(syncSettingsRef.current, notesRef.current);
+        await saveAccountNotes(accountSessionRef.current, notesRef.current);
       }
-      setSyncStatus(`WebDAV 已同步 ${formatTime(Date.now())}`);
-    } catch {
-      setSyncStatus("WebDAV 同步失败");
+      setSyncStatus(`卜卜账号已同步 ${formatTime(Date.now())}`);
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : "卜卜账号同步失败");
     } finally {
       setIsSyncing(false);
     }
   }
 
-  function handleDisconnectWebDav() {
-    clearStoredWebDavSettings();
-    setSyncSettings(null);
-    syncSettingsRef.current = null;
-    setSyncForm(emptyWebDavSettings);
+  function handleLogoutAccount() {
+    clearStoredAccountSession();
+    setAccountSession(null);
+    accountSessionRef.current = null;
+    setAccountForm(emptyAccountForm);
     setSyncStatus("本地保存");
   }
 
@@ -341,17 +346,17 @@ export default function App() {
   }, [notes]);
 
   useEffect(() => {
-    syncSettingsRef.current = syncSettings;
-  }, [syncSettings]);
+    accountSessionRef.current = accountSession;
+  }, [accountSession]);
 
   useEffect(() => {
-    if (!syncSettings) return undefined;
+    if (!accountSession) return undefined;
     const timer = window.setInterval(() => {
       void handleSyncNow();
     }, 30000);
 
     return () => window.clearInterval(timer);
-  }, [syncSettings]);
+  }, [accountSession]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -464,13 +469,19 @@ export default function App() {
           ))}
         </div>
 
-        <section className="sync-card" aria-label="WebDAV 多端同步">
+        <section className="sync-card" aria-label="卜卜账号">
           <div>
-            <span className="sync-label">{syncSettings ? "WebDAV 已登录" : "WebDAV 未登录"}</span>
+            <span className="sync-label">{accountSession ? `已登录 ${accountSession.username}` : "卜卜账号未登录"}</span>
             <p>{syncStatus}</p>
           </div>
           <div className="sync-actions">
-            <button type="button" onClick={() => setIsSyncDialogOpen(true)}>{syncSettings ? "设置" : "登录"}</button>
+            {!accountSession && (
+              <>
+                <button type="button" onClick={() => { setAuthMode("login"); setIsSyncDialogOpen(true); }}>登录</button>
+                <button type="button" onClick={() => { setAuthMode("register"); setIsSyncDialogOpen(true); }}>注册</button>
+              </>
+            )}
+            {accountSession && <button type="button" onClick={handleLogoutAccount}>退出</button>}
             <button type="button" disabled={isSyncing} onClick={handleSyncNow}>同步</button>
           </div>
         </section>
@@ -767,34 +778,30 @@ export default function App() {
 
       {isSyncDialogOpen && (
         <div className="dialog-overlay" role="presentation" onMouseDown={() => setIsSyncDialogOpen(false)}>
-          <section className="sync-dialog" role="dialog" aria-modal="true" aria-label="WebDAV 登录设置" onMouseDown={(event) => event.stopPropagation()}>
+          <section className="sync-dialog" role="dialog" aria-modal="true" aria-label="卜卜账号登录注册" onMouseDown={(event) => event.stopPropagation()}>
             <div className="small-dialog-header">
-              <h2>WebDAV 多端同步</h2>
-              <button type="button" aria-label="关闭 WebDAV 设置" onClick={() => setIsSyncDialogOpen(false)}>×</button>
+              <h2>卜卜账号</h2>
+              <button type="button" aria-label="关闭卜卜账号设置" onClick={() => setIsSyncDialogOpen(false)}>×</button>
+            </div>
+            <div className="auth-tabs" aria-label="账号操作">
+              <button type="button" className={authMode === "login" ? "active" : ""} aria-pressed={authMode === "login"} onClick={() => setAuthMode("login")}>登录</button>
+              <button type="button" className={authMode === "register" ? "active" : ""} aria-pressed={authMode === "register"} onClick={() => setAuthMode("register")}>注册</button>
             </div>
             <div className="sync-form">
               <label>
-                <span>WebDAV 地址</span>
-                <input value={syncForm.endpoint} placeholder="https://dav.jianguoyun.com/dav" onChange={(event) => setSyncForm({ ...syncForm, endpoint: event.target.value })} />
+                <span>账号</span>
+                <input value={accountForm.username} autoComplete="username" placeholder="输入卜卜账号" onChange={(event) => setAccountForm({ ...accountForm, username: event.target.value })} />
               </label>
               <label>
-                <span>用户名</span>
-                <input value={syncForm.username} autoComplete="username" onChange={(event) => setSyncForm({ ...syncForm, username: event.target.value })} />
-              </label>
-              <label>
-                <span>密码 / 应用密码</span>
-                <input type="password" value={syncForm.password} autoComplete="current-password" onChange={(event) => setSyncForm({ ...syncForm, password: event.target.value })} />
-              </label>
-              <label>
-                <span>同步文件路径</span>
-                <input value={syncForm.filePath} onChange={(event) => setSyncForm({ ...syncForm, filePath: event.target.value })} />
+                <span>密码</span>
+                <input type="password" value={accountForm.password} autoComplete={authMode === "register" ? "new-password" : "current-password"} placeholder="至少 6 位" onChange={(event) => setAccountForm({ ...accountForm, password: event.target.value })} />
               </label>
             </div>
             <div className="dialog-actions">
-              {syncSettings && <button type="button" onClick={handleDisconnectWebDav}>退出登录</button>}
+              {accountSession && <button type="button" onClick={handleLogoutAccount}>退出登录</button>}
               <button type="button" onClick={() => setIsSyncDialogOpen(false)}>取消</button>
-              <button type="button" className="primary-action" disabled={isSyncing} onClick={handleConnectWebDav}>
-                {isSyncing ? "正在同步" : "登录并同步"}
+              <button type="button" className="primary-action" disabled={isSyncing} onClick={handleSubmitAccount}>
+                {isSyncing ? "正在同步" : authMode === "register" ? "注册并同步" : "登录并同步"}
               </button>
             </div>
           </section>

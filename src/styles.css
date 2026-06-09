@@ -716,6 +716,31 @@ input {
   width: min(560px, 100%);
 }
 
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 16px 20px 0;
+}
+
+.auth-tabs button {
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--muted);
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.auth-tabs button.active {
+  border-color: transparent;
+  color: #fff;
+  background: var(--accent);
+  box-shadow: 0 9px 18px rgba(255, 122, 47, 0.18);
+}
+
 .small-dialog-header {
   display: flex;
   align-items: center;

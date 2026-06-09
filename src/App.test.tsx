@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "./App";
 import type { Note } from "./types";
@@ -138,16 +138,20 @@ describe("App", () => {
     ]));
   });
 
-  it("shows WebDAV login controls", async () => {
+  it("shows Bubu account login and register controls", async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    expect(await screen.findByLabelText("WebDAV 多端同步")).toBeInTheDocument();
+    expect(await screen.findByLabelText("卜卜账号")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "登录" }));
 
-    expect(screen.getByRole("dialog", { name: "WebDAV 登录设置" })).toBeInTheDocument();
-    expect(screen.getByLabelText("WebDAV 地址")).toBeInTheDocument();
-    expect(screen.getByLabelText("同步文件路径")).toHaveValue("/bubu-notes/notes.json");
+    const dialog = screen.getByRole("dialog", { name: "卜卜账号登录注册" });
+    expect(dialog).toBeInTheDocument();
+    expect(screen.getByLabelText("账号")).toBeInTheDocument();
+    expect(screen.getByLabelText("密码")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "注册" }));
+    expect(within(dialog).getByRole("button", { name: "注册并同步" })).toBeInTheDocument();
   });
 
   it("shows a save failure when persistence fails", async () => {
