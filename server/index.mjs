@@ -4,7 +4,7 @@ import { extname, join, normalize, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const distDir = resolve(rootDir, "dist");
+const distDir = resolve(rootDir, "dist-web");
 const port = Number(process.env.PORT || 3000);
 const maxBodyBytes = 1024 * 1024 * 8;
 
