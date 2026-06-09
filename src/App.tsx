@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import logoUrl from "../assets/bubu-logo.svg";
 import { createBrowserNotesApi } from "./lib/browserFileApi";
 import { renderMarkdown } from "./lib/markdown";
+import { mergeNotesForSync } from "./lib/noteSync";
 import { createNote, deleteNote, filterNotes, updateNote } from "./lib/notes";
 import { createMarkdownTable, insertMarkdownSnippet, type SnippetKind } from "./lib/snippets";
 import { getNoteStats } from "./lib/stats";
@@ -13,7 +14,6 @@ import {
   loadAccountNotes,
   loadStoredAccountSession,
   loginAccount,
-  maxNoteUpdatedAt,
   registerAccount,
   saveAccountNotes,
   saveStoredAccountSession
@@ -49,19 +49,6 @@ function getApi() {
 
 function formatTime(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
-}
-
-function isBlankStarterNotes(notes: Note[]): boolean {
-  return notes.length === 1
-    && notes[0].title.trim() === "未命名笔记"
-    && notes[0].content.trim() === ""
-    && notes[0].tags.length === 0;
-}
-
-function shouldUseRemoteNotes(remoteNotes: Note[], localNotes: Note[]): boolean {
-  if (remoteNotes.length === 0) return false;
-  if (isBlankStarterNotes(localNotes)) return true;
-  return maxNoteUpdatedAt(remoteNotes) >= maxNoteUpdatedAt(localNotes);
 }
 
 export default function App() {
@@ -100,14 +87,17 @@ export default function App() {
     try {
       await getApi().saveNotes(nextNotes);
       setSaveStatus(`已自动保存 ${formatTime(Date.now())}`);
-      if (accountSessionRef.current) {
-        await saveAccountNotes(accountSessionRef.current, nextNotes);
-        setSyncStatus(`卜卜账号已同步 ${formatTime(Date.now())}`);
-      }
     } catch {
       setSaveStatus("保存失败");
-      if (accountSessionRef.current) {
-        setSyncStatus("卜卜账号同步失败");
+      return;
+    }
+
+    if (accountSessionRef.current) {
+      try {
+        await saveAccountNotes(accountSessionRef.current, nextNotes);
+        setSyncStatus(`卜卜账号已同步 ${formatTime(Date.now())}`);
+      } catch (error) {
+        setSyncStatus(error instanceof Error ? error.message : "卜卜账号同步失败");
       }
     }
   }, []);
@@ -126,9 +116,10 @@ export default function App() {
         setSyncStatus("卜卜账号正在连接");
         try {
           const remote = await loadAccountNotes(storedSession);
-          if (!cancelled && shouldUseRemoteNotes(remote.notes, nextNotes)) {
-            nextNotes = remote.notes;
+          if (!cancelled && remote.notes.length > 0) {
+            nextNotes = mergeNotesForSync(nextNotes, remote.notes);
             await getApi().saveNotes(nextNotes);
+            await saveAccountNotes(storedSession, nextNotes);
           }
           if (!cancelled) {
             setSyncStatus(`卜卜账号已连接 ${formatTime(Date.now())}`);
@@ -306,14 +297,12 @@ export default function App() {
       setAccountSession(result.session);
       accountSessionRef.current = result.session;
       const remoteNotes = result.notes ?? [];
-      if (shouldUseRemoteNotes(remoteNotes, notesRef.current)) {
-        setNotes(remoteNotes);
-        notesRef.current = remoteNotes;
-        setActiveId(remoteNotes[0].id);
-        await getApi().saveNotes(remoteNotes);
-      } else {
-        await saveAccountNotes(result.session, notesRef.current);
-      }
+      const mergedNotes = mergeNotesForSync(notesRef.current, remoteNotes);
+      setNotes(mergedNotes);
+      notesRef.current = mergedNotes;
+      setActiveId(mergedNotes[0]?.id ?? "");
+      await getApi().saveNotes(mergedNotes);
+      await saveAccountNotes(result.session, mergedNotes);
       setSyncStatus(`卜卜账号已同步 ${formatTime(Date.now())}`);
       setIsSyncDialogOpen(false);
       setAccountForm(emptyAccountForm);
@@ -334,14 +323,12 @@ export default function App() {
     setSyncStatus("卜卜账号正在同步");
     try {
       const remote = await loadAccountNotes(accountSessionRef.current);
-      if (remote.notes.length > 0 && (isBlankStarterNotes(notesRef.current) || maxNoteUpdatedAt(remote.notes) > maxNoteUpdatedAt(notesRef.current))) {
-        setNotes(remote.notes);
-        notesRef.current = remote.notes;
-        setActiveId(remote.notes[0].id);
-        await getApi().saveNotes(remote.notes);
-      } else {
-        await saveAccountNotes(accountSessionRef.current, notesRef.current);
-      }
+      const mergedNotes = mergeNotesForSync(notesRef.current, remote.notes);
+      setNotes(mergedNotes);
+      notesRef.current = mergedNotes;
+      setActiveId(mergedNotes[0]?.id ?? "");
+      await getApi().saveNotes(mergedNotes);
+      await saveAccountNotes(accountSessionRef.current, mergedNotes);
       setSyncStatus(`卜卜账号已同步 ${formatTime(Date.now())}`);
     } catch (error) {
       setSyncStatus(error instanceof Error ? error.message : "卜卜账号同步失败");
