@@ -1,0 +1,130 @@
+{
+  "name": "bubu-notes",
+  "version": "1.0.0",
+  "description": "卜卜笔记桌面客户端",
+  "main": "dist-electron/main/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "generate:icons": "node build-scripts/generate-icon.mjs",
+    "build": "npm run generate:icons && npm run typecheck && electron-vite build",
+    "package:mac": "npm run build && electron-builder --mac dmg zip",
+    "package:mac:dir": "npm run build && electron-builder --mac dir",
+    "package:win": "npm run package:win:installer",
+    "package:win:installer": "npm run build && node build-scripts/package-win-installer.mjs",
+    "package:win:zip": "npm run build && electron-builder --win zip --config.electronDist=node_modules/electron/dist --config.electronVersion=39.2.6",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.mjs",
+    "test:e2e": "npm run build && playwright test",
+    "build:web": "vite build --config vite.web.config.ts",
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "@codemirror/lang-markdown": "^6.3.4",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.8",
+    "@uiw/react-codemirror": "^4.25.3",
+    "dompurify": "^3.3.1",
+    "express": "^4.22.2",
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.0",
+    "markdown-it-task-lists": "^2.1.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.1",
+    "@playwright/test": "^1.57.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/dompurify": "^3.2.0",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^24.10.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^39.2.6",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.0",
+    "jsdom": "^27.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.6",
+    "vitest": "^4.0.15"
+  },
+  "build": {
+    "appId": "com.bubu.notes",
+    "productName": "卜卜笔记",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "assets/**",
+      "build/icon.*"
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist"
+    },
+    "dmg": {
+      "title": "卜卜笔记 ${version}",
+      "backgroundColor": "#fff7ef",
+      "iconSize": 96,
+      "contents": [
+        {
+          "x": 150,
+          "y": 170
+        },
+        {
+          "x": 390,
+          "y": 170,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "卜卜笔记",
+      "uninstallDisplayName": "卜卜笔记"
+    }
+  }
+}
