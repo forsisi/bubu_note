@@ -9,6 +9,8 @@ const seedNotes: Note[] = [
 ];
 
 beforeEach(() => {
+  localStorage.clear();
+  vi.stubGlobal("fetch", vi.fn());
   window.bubuNotes = {
     loadNotes: vi.fn().mockResolvedValue(seedNotes),
     saveNotes: vi.fn().mockResolvedValue(undefined),
@@ -16,6 +18,10 @@ beforeEach(() => {
     exportJson: vi.fn().mockResolvedValue(true),
     importMarkdown: vi.fn().mockResolvedValue({ id: "c", title: "导入笔记", content: "# 导入", tags: [], updatedAt: 3 })
   };
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe("App", () => {
@@ -67,10 +73,10 @@ describe("App", () => {
     render(<App />);
 
     await user.click(await screen.findByRole("button", { name: "导出当前笔记为 Markdown" }));
-    expect(window.bubuNotes.exportMarkdown).toHaveBeenCalledWith(seedNotes[0]);
+    expect(window.bubuNotes!.exportMarkdown).toHaveBeenCalledWith(seedNotes[0]);
 
     await user.click(screen.getByRole("button", { name: "导出全部笔记为 JSON" }));
-    expect(window.bubuNotes.exportJson).toHaveBeenCalled();
+    expect(window.bubuNotes!.exportJson).toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "导入 Markdown 文件" }));
     expect(await screen.findByText("导入笔记")).toBeInTheDocument();
@@ -91,7 +97,7 @@ describe("App", () => {
     expect(screen.getAllByText("未命名笔记").length).toBeGreaterThan(0);
 
     await user.keyboard("{Control>}s{/Control}");
-    expect(window.bubuNotes.saveNotes).toHaveBeenCalled();
+    expect(window.bubuNotes!.saveNotes).toHaveBeenCalled();
   });
 
   it("shows markdown syntax insertion buttons", async () => {
@@ -99,14 +105,54 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: "插入标题" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "插入粗体" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "插入斜体" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "插入删除线" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "插入引用" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "插入链接" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "插入图片" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "插入无序列表" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "插入有序列表" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "插入代码块" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "插入表格" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "插入任务列表" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "插入分割线" })).toBeInTheDocument();
+  });
+
+  it("inserts a custom sized markdown table", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "插入表格" }));
+    expect(screen.getByRole("dialog", { name: "插入自定义表格" })).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("行数"));
+    await user.type(screen.getByLabelText("行数"), "3");
+    await user.clear(screen.getByLabelText("列数"));
+    await user.type(screen.getByLabelText("列数"), "4");
+    await user.click(screen.getByRole("button", { name: "插入 3×4 表格" }));
+
+    expect(window.bubuNotes!.saveNotes).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({
+        content: expect.stringContaining("| 列 1 | 列 2 | 列 3 | 列 4 |")
+      })
+    ]));
+  });
+
+  it("shows WebDAV login controls", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(await screen.findByLabelText("WebDAV 多端同步")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "登录" }));
+
+    expect(screen.getByRole("dialog", { name: "WebDAV 登录设置" })).toBeInTheDocument();
+    expect(screen.getByLabelText("WebDAV 地址")).toBeInTheDocument();
+    expect(screen.getByLabelText("同步文件路径")).toHaveValue("/bubu-notes/notes.json");
   });
 
   it("shows a save failure when persistence fails", async () => {
     const user = userEvent.setup();
-    window.bubuNotes.saveNotes = vi.fn().mockRejectedValue(new Error("disk full"));
+    window.bubuNotes!.saveNotes = vi.fn().mockRejectedValue(new Error("disk full"));
     render(<App />);
 
     await user.type(await screen.findByRole("textbox", { name: "笔记标题" }), "失败");

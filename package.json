@@ -8,6 +8,8 @@
     "dev": "electron-vite dev",
     "generate:icons": "node build-scripts/generate-icon.mjs",
     "build": "npm run generate:icons && npm run typecheck && electron-vite build",
+    "build:web": "npm run typecheck && vite build --config vite.web.config.ts",
+    "start": "node server/index.mjs",
     "package:mac": "npm run build && electron-builder --mac dmg zip",
     "package:mac:dir": "npm run build && electron-builder --mac dir",
     "package:win": "npm run package:win:installer",
@@ -15,9 +17,7 @@
     "package:win:zip": "npm run build && electron-builder --win zip --config.electronDist=node_modules/electron/dist --config.electronVersion=39.2.6",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --config vitest.config.mjs",
-    "test:e2e": "npm run build && playwright test",
-    "build:web": "vite build --config vite.web.config.ts",
-    "start": "node server.mjs"
+    "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.3.4",

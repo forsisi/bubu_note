@@ -2,7 +2,7 @@ import type { BubuNotesApi } from "./types";
 
 declare global {
   interface Window {
-    bubuNotes: BubuNotesApi;
+    bubuNotes?: BubuNotesApi;
   }
 }
 

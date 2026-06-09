@@ -6,9 +6,19 @@ import logoUrl from "../assets/bubu-logo.svg";
 import { createBrowserNotesApi } from "./lib/browserFileApi";
 import { renderMarkdown } from "./lib/markdown";
 import { createNote, deleteNote, filterNotes, updateNote } from "./lib/notes";
-import { insertMarkdownSnippet, type SnippetKind } from "./lib/snippets";
+import { createMarkdownTable, insertMarkdownSnippet, type SnippetKind } from "./lib/snippets";
 import { getNoteStats } from "./lib/stats";
-import type { EditorMode, Note } from "./types";
+import {
+  clearStoredWebDavSettings,
+  loadStoredWebDavSettings,
+  loadWebDavNotes,
+  maxNoteUpdatedAt,
+  normalizeWebDavSettings,
+  saveStoredWebDavSettings,
+  saveWebDavNotes,
+  testWebDavConnection
+} from "./lib/webdavSync";
+import type { EditorMode, Note, WebDavSettings } from "./types";
 
 const modeLabels: Record<EditorMode, string> = {
   edit: "编辑模式",
@@ -28,6 +38,12 @@ const markdownTutorial = [
 ];
 
 const fallbackApi = createBrowserNotesApi();
+const emptyWebDavSettings: WebDavSettings = {
+  endpoint: "",
+  username: "",
+  password: "",
+  filePath: "/bubu-notes/notes.json"
+};
 
 function getApi() {
   return window.bubuNotes ?? fallbackApi;
@@ -44,11 +60,21 @@ export default function App() {
   const [activeTag, setActiveTag] = useState("");
   const [mode, setMode] = useState<EditorMode>("edit");
   const [saveStatus, setSaveStatus] = useState("正在载入");
+  const [syncStatus, setSyncStatus] = useState("本地保存");
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [isTableDialogOpen, setIsTableDialogOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableColumns, setTableColumns] = useState(4);
+  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
+  const [syncSettings, setSyncSettings] = useState<WebDavSettings | null>(() => loadStoredWebDavSettings());
+  const [syncForm, setSyncForm] = useState<WebDavSettings>(() => loadStoredWebDavSettings() ?? emptyWebDavSettings);
+  const [isSyncing, setIsSyncing] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<ReactCodeMirrorRef>(null);
   const previewRef = useRef<HTMLDivElement>(null);
   const syncingRef = useRef(false);
+  const syncSettingsRef = useRef<WebDavSettings | null>(syncSettings);
+  const notesRef = useRef<Note[]>([]);
 
   const activeNote = useMemo(() => notes.find((note) => note.id === activeId) ?? notes[0], [activeId, notes]);
   const filteredNotes = useMemo(() => filterNotes(notes, searchQuery, activeTag), [activeTag, notes, searchQuery]);
@@ -58,21 +84,53 @@ export default function App() {
 
   const persistNotes = useCallback(async (nextNotes: Note[]) => {
     setNotes(nextNotes);
+    notesRef.current = nextNotes;
     try {
       await getApi().saveNotes(nextNotes);
       setSaveStatus(`已自动保存 ${formatTime(Date.now())}`);
+      if (syncSettingsRef.current) {
+        await saveWebDavNotes(syncSettingsRef.current, nextNotes);
+        setSyncStatus(`WebDAV 已同步 ${formatTime(Date.now())}`);
+      }
     } catch {
       setSaveStatus("保存失败");
+      if (syncSettingsRef.current) {
+        setSyncStatus("WebDAV 同步失败");
+      }
     }
   }, []);
 
   useEffect(() => {
     let cancelled = false;
 
-    void getApi().loadNotes().then((loadedNotes) => {
+    void getApi().loadNotes().then(async (loadedNotes) => {
       if (cancelled) return;
-      const nextNotes = loadedNotes.length > 0 ? loadedNotes : [createNote()];
+      let nextNotes = loadedNotes.length > 0 ? loadedNotes : [createNote()];
+      const storedSettings = loadStoredWebDavSettings();
+
+      if (storedSettings) {
+        syncSettingsRef.current = storedSettings;
+        setSyncSettings(storedSettings);
+        setSyncForm(storedSettings);
+        setSyncStatus("WebDAV 正在连接");
+        try {
+          const remote = await loadWebDavNotes(storedSettings);
+          if (!cancelled && remote.notes.length > 0 && maxNoteUpdatedAt(remote.notes) >= maxNoteUpdatedAt(nextNotes)) {
+            nextNotes = remote.notes;
+            await getApi().saveNotes(nextNotes);
+          }
+          if (!cancelled) {
+            setSyncStatus(`WebDAV 已连接 ${formatTime(Date.now())}`);
+          }
+        } catch {
+          if (!cancelled) {
+            setSyncStatus("WebDAV 连接失败");
+          }
+        }
+      }
+
       setNotes(nextNotes);
+      notesRef.current = nextNotes;
       setActiveId(nextNotes[0].id);
       setSaveStatus("已保存");
     });
@@ -190,6 +248,111 @@ export default function App() {
     });
   }
 
+  function insertTextAtEditor(insertion: string) {
+    if (!activeNote) return;
+
+    const view = editorRef.current?.view;
+    const selection = view?.state.selection.main;
+    const start = selection?.from ?? activeNote.content.length;
+    const end = selection?.to ?? activeNote.content.length;
+    const before = activeNote.content.slice(0, start);
+    const after = activeNote.content.slice(end);
+    const needsLeadingBreak = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
+    const needsTrailingBreak = after.length > 0 && !after.startsWith("\n") ? "\n" : "";
+    const nextContent = `${before}${needsLeadingBreak}${insertion}${needsTrailingBreak}${after}`;
+    handleUpdateNote({ content: nextContent });
+
+    window.requestAnimationFrame(() => {
+      const nextView = editorRef.current?.view;
+      const cursor = before.length + needsLeadingBreak.length + insertion.length;
+      nextView?.focus();
+      nextView?.dispatch({ selection: { anchor: cursor } });
+    });
+  }
+
+  function handleInsertCustomTable() {
+    insertTextAtEditor(createMarkdownTable(tableRows, tableColumns));
+    setIsTableDialogOpen(false);
+  }
+
+  async function handleConnectWebDav() {
+    const nextSettings = normalizeWebDavSettings(syncForm);
+    setIsSyncing(true);
+    setSyncStatus("WebDAV 正在登录");
+    try {
+      await testWebDavConnection(nextSettings);
+      saveStoredWebDavSettings(nextSettings);
+      setSyncSettings(nextSettings);
+      syncSettingsRef.current = nextSettings;
+      const remote = await loadWebDavNotes(nextSettings);
+      if (remote.notes.length > 0 && maxNoteUpdatedAt(remote.notes) >= maxNoteUpdatedAt(notesRef.current)) {
+        setNotes(remote.notes);
+        notesRef.current = remote.notes;
+        setActiveId(remote.notes[0].id);
+        await getApi().saveNotes(remote.notes);
+      } else {
+        await saveWebDavNotes(nextSettings, notesRef.current);
+      }
+      setSyncStatus(`WebDAV 已同步 ${formatTime(Date.now())}`);
+      setIsSyncDialogOpen(false);
+    } catch {
+      setSyncStatus("WebDAV 登录失败");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleSyncNow() {
+    if (!syncSettingsRef.current) {
+      setIsSyncDialogOpen(true);
+      return;
+    }
+
+    setIsSyncing(true);
+    setSyncStatus("WebDAV 正在同步");
+    try {
+      const remote = await loadWebDavNotes(syncSettingsRef.current);
+      if (remote.notes.length > 0 && maxNoteUpdatedAt(remote.notes) > maxNoteUpdatedAt(notesRef.current)) {
+        setNotes(remote.notes);
+        notesRef.current = remote.notes;
+        setActiveId(remote.notes[0].id);
+        await getApi().saveNotes(remote.notes);
+      } else {
+        await saveWebDavNotes(syncSettingsRef.current, notesRef.current);
+      }
+      setSyncStatus(`WebDAV 已同步 ${formatTime(Date.now())}`);
+    } catch {
+      setSyncStatus("WebDAV 同步失败");
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  function handleDisconnectWebDav() {
+    clearStoredWebDavSettings();
+    setSyncSettings(null);
+    syncSettingsRef.current = null;
+    setSyncForm(emptyWebDavSettings);
+    setSyncStatus("本地保存");
+  }
+
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
+
+  useEffect(() => {
+    syncSettingsRef.current = syncSettings;
+  }, [syncSettings]);
+
+  useEffect(() => {
+    if (!syncSettings) return undefined;
+    const timer = window.setInterval(() => {
+      void handleSyncNow();
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, [syncSettings]);
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (!event.ctrlKey && !event.metaKey) return;
@@ -301,6 +464,17 @@ export default function App() {
           ))}
         </div>
 
+        <section className="sync-card" aria-label="WebDAV 多端同步">
+          <div>
+            <span className="sync-label">{syncSettings ? "WebDAV 已登录" : "WebDAV 未登录"}</span>
+            <p>{syncStatus}</p>
+          </div>
+          <div className="sync-actions">
+            <button type="button" onClick={() => setIsSyncDialogOpen(true)}>{syncSettings ? "设置" : "登录"}</button>
+            <button type="button" disabled={isSyncing} onClick={handleSyncNow}>同步</button>
+          </div>
+        </section>
+
         <div className="note-list" data-testid="note-scroll-region">
           {filteredNotes.length === 0 ? (
             <div className="empty-list">没有找到匹配的笔记。</div>
@@ -354,6 +528,49 @@ export default function App() {
             <div className="syntax-toolbar" aria-label="插入 Markdown 语法">
               <button type="button" title="插入标题" aria-label="插入标题" onClick={() => handleInsertSnippet("heading")}>#</button>
               <button type="button" title="插入粗体" aria-label="插入粗体" onClick={() => handleInsertSnippet("bold")}>B</button>
+              <button type="button" title="插入斜体" aria-label="插入斜体" onClick={() => handleInsertSnippet("italic")}>I</button>
+              <button type="button" title="插入删除线" aria-label="插入删除线" onClick={() => handleInsertSnippet("strikethrough")}>S</button>
+              <button type="button" title="插入引用" aria-label="插入引用" onClick={() => handleInsertSnippet("quote")}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M7 7h7" />
+                  <path d="M7 12h10" />
+                  <path d="M7 17h6" />
+                  <path d="M4 5v14" />
+                </svg>
+              </button>
+              <button type="button" title="插入链接" aria-label="插入链接" onClick={() => handleInsertSnippet("link")}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
+                  <path d="M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1" />
+                </svg>
+              </button>
+              <button type="button" title="插入图片" aria-label="插入图片" onClick={() => handleInsertSnippet("image")}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 5h16v14H4z" />
+                  <path d="M8 11l3 3 2-2 3 4" />
+                  <circle cx="16" cy="9" r="1.3" />
+                </svg>
+              </button>
+              <button type="button" title="插入无序列表" aria-label="插入无序列表" onClick={() => handleInsertSnippet("unorderedList")}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9 7h11" />
+                  <path d="M9 12h11" />
+                  <path d="M9 17h11" />
+                  <path d="M4 7h.01" />
+                  <path d="M4 12h.01" />
+                  <path d="M4 17h.01" />
+                </svg>
+              </button>
+              <button type="button" title="插入有序列表" aria-label="插入有序列表" onClick={() => handleInsertSnippet("orderedList")}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M10 7h10" />
+                  <path d="M10 12h10" />
+                  <path d="M10 17h10" />
+                  <path d="M4 7h1" />
+                  <path d="M4 12h1" />
+                  <path d="M4 17h1" />
+                </svg>
+              </button>
               <button type="button" title="插入代码块" aria-label="插入代码块" onClick={() => handleInsertSnippet("code")}>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M8 9l-4 3 4 3" />
@@ -361,7 +578,7 @@ export default function App() {
                   <path d="M13 5l-2 14" />
                 </svg>
               </button>
-              <button type="button" title="插入表格" aria-label="插入表格" onClick={() => handleInsertSnippet("table")}>
+              <button type="button" title="插入表格" aria-label="插入表格" onClick={() => setIsTableDialogOpen(true)}>
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path d="M4 5h16v14H4z" />
                   <path d="M4 10h16" />
@@ -376,6 +593,11 @@ export default function App() {
                   <path d="M12 8h7" />
                   <path d="M6 17l2 2 4-5" />
                   <path d="M14 17h5" />
+                </svg>
+              </button>
+              <button type="button" title="插入分割线" aria-label="插入分割线" onClick={() => handleInsertSnippet("divider")}>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 12h16" />
                 </svg>
               </button>
             </div>
@@ -513,6 +735,67 @@ export default function App() {
                   <p>{item.note}</p>
                 </article>
               ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {isTableDialogOpen && (
+        <div className="dialog-overlay" role="presentation" onMouseDown={() => setIsTableDialogOpen(false)}>
+          <section className="small-dialog" role="dialog" aria-modal="true" aria-label="插入自定义表格" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="small-dialog-header">
+              <h2>插入表格</h2>
+              <button type="button" aria-label="关闭表格设置" onClick={() => setIsTableDialogOpen(false)}>×</button>
+            </div>
+            <div className="field-grid">
+              <label>
+                <span>行数</span>
+                <input type="number" min="1" max="20" value={tableRows} onChange={(event) => setTableRows(Number(event.target.value))} />
+              </label>
+              <label>
+                <span>列数</span>
+                <input type="number" min="1" max="10" value={tableColumns} onChange={(event) => setTableColumns(Number(event.target.value))} />
+              </label>
+            </div>
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setIsTableDialogOpen(false)}>取消</button>
+              <button type="button" className="primary-action" onClick={handleInsertCustomTable}>插入 {tableRows}×{tableColumns} 表格</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {isSyncDialogOpen && (
+        <div className="dialog-overlay" role="presentation" onMouseDown={() => setIsSyncDialogOpen(false)}>
+          <section className="sync-dialog" role="dialog" aria-modal="true" aria-label="WebDAV 登录设置" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="small-dialog-header">
+              <h2>WebDAV 多端同步</h2>
+              <button type="button" aria-label="关闭 WebDAV 设置" onClick={() => setIsSyncDialogOpen(false)}>×</button>
+            </div>
+            <div className="sync-form">
+              <label>
+                <span>WebDAV 地址</span>
+                <input value={syncForm.endpoint} placeholder="https://dav.jianguoyun.com/dav" onChange={(event) => setSyncForm({ ...syncForm, endpoint: event.target.value })} />
+              </label>
+              <label>
+                <span>用户名</span>
+                <input value={syncForm.username} autoComplete="username" onChange={(event) => setSyncForm({ ...syncForm, username: event.target.value })} />
+              </label>
+              <label>
+                <span>密码 / 应用密码</span>
+                <input type="password" value={syncForm.password} autoComplete="current-password" onChange={(event) => setSyncForm({ ...syncForm, password: event.target.value })} />
+              </label>
+              <label>
+                <span>同步文件路径</span>
+                <input value={syncForm.filePath} onChange={(event) => setSyncForm({ ...syncForm, filePath: event.target.value })} />
+              </label>
+            </div>
+            <div className="dialog-actions">
+              {syncSettings && <button type="button" onClick={handleDisconnectWebDav}>退出登录</button>}
+              <button type="button" onClick={() => setIsSyncDialogOpen(false)}>取消</button>
+              <button type="button" className="primary-action" disabled={isSyncing} onClick={handleConnectWebDav}>
+                {isSyncing ? "正在同步" : "登录并同步"}
+              </button>
             </div>
           </section>
         </div>
