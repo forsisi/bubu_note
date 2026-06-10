@@ -25,6 +25,10 @@ body,
   height: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   overflow: hidden;
@@ -38,6 +42,12 @@ body {
 button,
 input {
   font: inherit;
+}
+
+button,
+input,
+textarea {
+  -webkit-tap-highlight-color: transparent;
 }
 
 .app-shell {
@@ -1026,5 +1036,314 @@ input {
 
   .field-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  body {
+    background: var(--panel-soft);
+  }
+
+  .app-shell {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom));
+    gap: 8px;
+  }
+
+  .sidebar,
+  .editor {
+    border-radius: 14px;
+    box-shadow: 0 10px 28px rgba(127, 76, 40, 0.12);
+  }
+
+  .sidebar {
+    flex: 0 0 auto;
+    max-height: 42vh;
+  }
+
+  .sidebar-header {
+    padding: 10px 12px;
+  }
+
+  .brand-lockup {
+    gap: 9px;
+  }
+
+  .logo-mark {
+    width: 46px;
+    height: 42px;
+    border-radius: 14px;
+  }
+
+  .logo-mark img {
+    width: 48px;
+  }
+
+  .brand h1 {
+    font-size: 18px;
+  }
+
+  .brand p {
+    display: none;
+  }
+
+  .icon-button {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+  }
+
+  .search-wrap {
+    padding: 8px 10px 0;
+  }
+
+  .search-wrap svg {
+    left: 24px;
+    top: 21px;
+  }
+
+  .search-input {
+    height: 44px;
+    font-size: 16px;
+    line-height: 44px;
+  }
+
+  .tag-filter {
+    padding: 8px 10px 0;
+  }
+
+  .tag-button {
+    min-height: 34px;
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+
+  .sync-card {
+    margin: 8px 10px 0;
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .sync-label {
+    font-size: 13px;
+  }
+
+  .sync-actions button {
+    min-height: 40px;
+    padding: 9px 10px;
+    font-size: 13px;
+  }
+
+  .note-list {
+    display: flex;
+    flex: 0 0 auto;
+    min-height: 80px;
+    max-height: 112px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .note-item {
+    width: 168px;
+    min-width: 168px;
+    min-height: 72px;
+    margin: 0;
+    padding: 10px 11px;
+    border-radius: 13px;
+  }
+
+  .note-item.active {
+    box-shadow: inset 0 -4px 0 rgba(69, 183, 90, 0.72);
+  }
+
+  .note-title {
+    font-size: 14px;
+  }
+
+  .note-preview {
+    -webkit-line-clamp: 2;
+    font-size: 12px;
+  }
+
+  .editor {
+    flex: 1 1 auto;
+  }
+
+  .editor-toolbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .status {
+    font-size: 12px;
+  }
+
+  .toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: start;
+    overflow: hidden;
+    gap: 6px;
+  }
+
+  .mode-switch {
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .mode-switch button {
+    min-width: 54px;
+    min-height: 40px;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+
+  .tutorial-button,
+  .danger-button,
+  .syntax-toolbar button,
+  .io-actions button {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+
+  .syntax-toolbar,
+  .io-actions {
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .syntax-toolbar {
+    grid-column: 1 / -1;
+    order: 2;
+  }
+
+  .editor-body {
+    padding: 12px;
+    gap: 10px;
+  }
+
+  .title-input {
+    font-size: 22px;
+    line-height: 1.2;
+  }
+
+  .tag-input-wrap {
+    min-height: 44px;
+  }
+
+  .tag-input {
+    min-height: 42px;
+    font-size: 16px;
+  }
+
+  .editor-meta {
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .editor-workspace {
+    border-radius: 14px;
+  }
+
+  .markdown-editor .cm-editor {
+    font-size: 16px;
+  }
+
+  .markdown-editor .cm-content {
+    min-height: 100%;
+    padding: 16px 8px 28px;
+  }
+
+  .markdown-editor .cm-line {
+    padding: 0 4px;
+  }
+
+  .markdown-preview {
+    padding: 16px 16px 40px;
+    font-size: 16px;
+  }
+
+  .editor-workspace.mode-split {
+    grid-template-rows: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  }
+
+  .small-dialog,
+  .sync-dialog,
+  .tutorial-dialog {
+    width: 100%;
+    max-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    border-radius: 18px;
+  }
+
+  .dialog-overlay,
+  .tutorial-overlay {
+    align-items: flex-end;
+    padding: 12px 8px max(12px, env(safe-area-inset-bottom));
+  }
+
+  .small-dialog-header,
+  .tutorial-header {
+    padding: 14px 16px;
+  }
+
+  .field-grid,
+  .sync-form {
+    padding: 14px 16px;
+  }
+
+  .field-grid input,
+  .sync-form input {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .auth-tabs {
+    padding: 14px 16px 0;
+  }
+
+  .auth-tabs button,
+  .dialog-actions button {
+    min-height: 42px;
+  }
+
+  .dialog-actions {
+    padding: 0 16px 16px;
+  }
+
+  .tutorial-grid {
+    max-height: calc(100vh - 146px);
+    padding: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+  .sidebar {
+    max-height: 45vh;
+  }
+
+  .toolbar-actions {
+    grid-template-columns: 1fr auto;
+  }
+
+  .io-actions {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  .danger-button {
+    order: 1;
+  }
+
+  .tutorial-button {
+    order: 1;
   }
 }

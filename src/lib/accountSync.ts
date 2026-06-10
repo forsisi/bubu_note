@@ -1,6 +1,15 @@
 import type { AccountCredentials, AccountNotesFile, AccountResult, AccountSession, Note } from "../types";
 
 const sessionKey = "bubu-account-session";
+const nativeApiOrigin = "https://note.t1213121.fun";
+
+function isNativeApp(): boolean {
+  return window.Capacitor?.isNativePlatform?.() === true;
+}
+
+function resolveApiPath(path: string): string {
+  return isNativeApp() ? `${nativeApiOrigin}${path}` : path;
+}
 
 function isNote(value: unknown): value is Note {
   const note = value as Partial<Note>;
@@ -33,7 +42,7 @@ function normalizeSession(session: AccountSession): AccountSession {
 }
 
 async function postJson<T>(path: string, payload: unknown): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(resolveApiPath(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)

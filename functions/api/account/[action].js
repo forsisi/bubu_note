@@ -1,13 +1,19 @@
 const maxBodyBytes = 1024 * 1024 * 8;
 const sessionTtlSeconds = 60 * 60 * 24 * 30;
 const encoder = new TextEncoder();
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type"
+};
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store"
+      "Cache-Control": "no-store",
+      ...corsHeaders
     }
   });
 }
@@ -189,6 +195,13 @@ export async function onRequestPost({ request, env, params }) {
   } catch (error) {
     return json({ ok: false, message: error instanceof Error ? error.message : "卜卜账号请求失败" }, 400);
   }
+}
+
+export function onRequestOptions() {
+  return new Response(null, {
+    status: 204,
+    headers: corsHeaders
+  });
 }
 
 export function onRequestGet() {

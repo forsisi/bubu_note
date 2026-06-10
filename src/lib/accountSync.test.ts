@@ -50,6 +50,16 @@ describe("account sync helpers", () => {
     }));
   });
 
+  it("uses the Cloudflare account API in the Android app shell", async () => {
+    vi.stubGlobal("Capacitor", { isNativePlatform: () => true });
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ ok: true, session, notes: [], syncedAt: 0 }), { status: 200 }));
+
+    await expect(registerAccount(credentials)).resolves.toEqual({ ok: true, session, notes: [], syncedAt: 0 });
+    expect(fetch).toHaveBeenCalledWith("https://note.t1213121.fun/api/account/register", expect.objectContaining({
+      method: "POST"
+    }));
+  });
+
   it("logs in and loads remote notes", async () => {
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ ok: true, session, notes: [note], syncedAt: 20 }), { status: 200 }));
 

@@ -9,6 +9,9 @@
     "generate:icons": "node build-scripts/generate-icon.mjs",
     "build": "npm run generate:icons && npm run typecheck && electron-vite build",
     "build:web": "npm run typecheck && vite build --config vite.web.config.ts",
+    "build:android": "npm run build:web && npx cap sync android",
+    "android:open": "npx cap open android",
+    "android:sync": "npx cap sync android",
     "start": "node server/index.mjs",
     "package:mac": "npm run build && electron-builder --mac dmg zip",
     "package:mac:dir": "npm run build && electron-builder --mac dir",
@@ -20,6 +23,8 @@
     "test:e2e": "npm run build && playwright test"
   },
   "dependencies": {
+    "@capacitor/android": "^8.4.0",
+    "@capacitor/core": "^8.4.0",
     "@codemirror/lang-markdown": "^6.3.4",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.8",
@@ -33,6 +38,7 @@
     "react-dom": "^19.2.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.4.0",
     "@electron/rebuild": "^4.0.1",
     "@playwright/test": "^1.57.0",
     "@testing-library/jest-dom": "^6.9.1",
