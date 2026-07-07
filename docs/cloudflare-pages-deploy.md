@@ -5,7 +5,7 @@
 项目已经使用 GitHub 仓库：
 
 ```text
-https://github.com/imyanghao666-design/bubu_note
+https://github.com/forsisi/bubu_note
 ```
 
 Cloudflare Pages 连接这个仓库的 `main` 分支即可。不要上传 `node_modules/`、`release/`、`dist/`、`dist-web/` 这类生成目录；`.gitignore` 会处理这些。
