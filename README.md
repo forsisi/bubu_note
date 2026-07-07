@@ -21,10 +21,6 @@
   </p>
 </div>
 
-## 简历一句话
-
-卜卜笔记：基于 React + TypeScript + Electron + Vite + CodeMirror + Cloudflare Pages Functions/KV 技术栈，实现了支持 Markdown 实时预览、标签检索、本地持久化、导入导出、账号云同步与多端部署的轻量级笔记应用。
-
 ## 项目介绍
 
 卜卜笔记是一个 local-first 的 Markdown 笔记客户端，面向个人知识记录、学习笔记和轻量写作场景。项目同时支持 Web、Electron 桌面端、PWA/Android 形态：Web 端使用浏览器本地存储和 Cloudflare Pages Functions 提供账号同步，桌面端通过 Electron IPC 读写本地文件，并提供 Markdown/JSON 导入导出能力。
